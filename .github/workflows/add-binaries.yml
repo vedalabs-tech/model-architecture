@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "staging/**.b64"
+      - "staging/**"
 permissions:
   contents: write
 jobs:
@@ -11,16 +11,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Decode binaries and commit
+      - name: Assemble, decode binaries and commit
         run: |
           set -euo pipefail
+          mkdir -p staging
+          # Assemble from ordered parts if present
+          if ls staging/parts/pdf_*.txt >/dev/null 2>&1; then
+            cat $(ls staging/parts/pdf_*.txt | sort) > staging/model-architecture.pdf.b64
+          fi
+          if ls staging/parts/png_*.txt >/dev/null 2>&1; then
+            cat $(ls staging/parts/png_*.txt | sort) > staging/architecture-diagram.png.b64
+          fi
           if [ ! -f staging/architecture-diagram.png.b64 ] || [ ! -f staging/model-architecture.pdf.b64 ]; then
-            echo "Staging files missing; nothing to do"
+            echo "Staging b64 files missing; nothing to do"
+            exit 0
+          fi
+          # Require expected sizes (approx)
+          PDF_LEN=$(wc -c < staging/model-architecture.pdf.b64 | tr -d ' ')
+          PNG_LEN=$(wc -c < staging/architecture-diagram.png.b64 | tr -d ' ')
+          echo "PDF b64 len=$PDF_LEN PNG b64 len=$PNG_LEN"
+          if [ "$PDF_LEN" -lt 80000 ] || [ "$PNG_LEN" -lt 240000 ]; then
+            echo "Incomplete staging payloads; waiting for more parts"
             exit 0
           fi
           base64 -d staging/architecture-diagram.png.b64 > architecture-diagram.png
           base64 -d staging/model-architecture.pdf.b64 > model-architecture.pdf
           file architecture-diagram.png model-architecture.pdf || true
+          # Verify magic bytes
+          head -c 8 architecture-diagram.png | od -An -tx1
+          head -c 5 model-architecture.pdf | od -An -tx1
           rm -rf staging
           rm -f .github/workflows/add-binaries.yml
           git config user.name "github-actions[bot]"
