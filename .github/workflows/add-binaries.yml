@@ -15,17 +15,8 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p staging
-          # Known one-char paste fixes for staging parts
           if [ -f staging/parts/pdf_011.txt ]; then
-            python3 - <<'PY'
-          from pathlib import Path
-          p = Path('staging/parts/pdf_011.txt')
-          t = p.read_text()
-          t2 = t.replace('xhvFepaNS', 'xhvFEpaNS', 1)
-          if t != t2:
-              p.write_text(t2)
-              print('patched pdf_011 Fepa->FEpa')
-          PY
+            python3 -c "from pathlib import Path; p=Path('staging/parts/pdf_011.txt'); t=p.read_text(); t2=t.replace('xhvFepaNS','xhvFEpaNS',1); p.write_text(t2) if t!=t2 else None; print('patched pdf_011' if t!=t2 else 'pdf_011 ok')"
           fi
           if ls staging/parts/pdf_[0-9][0-9][0-9].txt >/dev/null 2>&1; then
             cat $(ls staging/parts/pdf_[0-9][0-9][0-9].txt | sort) > staging/model-architecture.pdf.b64
@@ -44,27 +35,22 @@ jobs:
             echo "Incomplete staging payloads; waiting for more parts"
             exit 0
           fi
-          # Integrity checks (md5 of expected local b64)
           PDF_MD5=$(md5sum staging/model-architecture.pdf.b64 | awk '{print $1}')
           PNG_MD5=$(md5sum staging/architecture-diagram.png.b64 | awk '{print $1}')
           echo "PDF md5=$PDF_MD5 PNG md5=$PNG_MD5"
-          test "$PDF_MD5" = "$(python3 -c 'import hashlib,pathlib; print(hashlib.md5(pathlib.Path("staging/model-architecture.pdf.b64").read_bytes()).hexdigest())')"
-          EXPECT_PDF_MD5=$(cat staging/EXPECTED_PDF_B64_MD5 2>/dev/null || true)
-          EXPECT_PNG_MD5=$(cat staging/EXPECTED_PNG_B64_MD5 2>/dev/null || true)
+          EXPECT_PDF_MD5=$(tr -d ' \n' < staging/EXPECTED_PDF_B64_MD5 || true)
+          EXPECT_PNG_MD5=$(tr -d ' \n' < staging/EXPECTED_PNG_B64_MD5 || true)
           if [ -n "$EXPECT_PDF_MD5" ] && [ "$PDF_MD5" != "$EXPECT_PDF_MD5" ]; then
-            echo "PDF b64 md5 mismatch: got $PDF_MD5 want $EXPECT_PDF_MD5"
-            exit 1
+            echo "PDF b64 md5 mismatch: got $PDF_MD5 want $EXPECT_PDF_MD5"; exit 1
           fi
           if [ -n "$EXPECT_PNG_MD5" ] && [ "$PNG_MD5" != "$EXPECT_PNG_MD5" ]; then
-            echo "PNG b64 md5 mismatch: got $PNG_MD5 want $EXPECT_PNG_MD5"
-            exit 1
+            echo "PNG b64 md5 mismatch: got $PNG_MD5 want $EXPECT_PNG_MD5"; exit 1
           fi
           base64 -d staging/architecture-diagram.png.b64 > architecture-diagram.png
           base64 -d staging/model-architecture.pdf.b64 > model-architecture.pdf
           file architecture-diagram.png model-architecture.pdf || true
           head -c 8 architecture-diagram.png | od -An -tx1
           head -c 5 model-architecture.pdf | od -An -tx1
-          # Size sanity
           test $(wc -c < architecture-diagram.png | tr -d ' ') -eq 187067
           test $(wc -c < model-architecture.pdf | tr -d ' ') -eq 63162
           rm -rf staging
