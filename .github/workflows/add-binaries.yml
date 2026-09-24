@@ -1,0 +1,31 @@
+name: Add binary assets
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "staging/**.b64"
+permissions:
+  contents: write
+jobs:
+  decode-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Decode binaries and commit
+        run: |
+          set -euo pipefail
+          if [ ! -f staging/architecture-diagram.png.b64 ] || [ ! -f staging/model-architecture.pdf.b64 ]; then
+            echo "Staging files missing; nothing to do"
+            exit 0
+          fi
+          base64 -d staging/architecture-diagram.png.b64 > architecture-diagram.png
+          base64 -d staging/model-architecture.pdf.b64 > model-architecture.pdf
+          file architecture-diagram.png model-architecture.pdf || true
+          rm -rf staging
+          rm -f .github/workflows/add-binaries.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git status
+          git commit -m "Add architecture diagram and PDF"
+          git push
